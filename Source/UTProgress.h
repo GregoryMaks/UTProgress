@@ -20,6 +20,8 @@ copies or substantial portions of the Software.
 */
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+#import <Foundation/Foundation.h>
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Interface
 
@@ -33,7 +35,7 @@ copies or substantial portions of the Software.
 @property (nonatomic, weak) NSString *developerBubblingMessage; ///< message intended for dev usage (bubbles up)
 
 /// KVO observable property
-@property (nonatomic, assign, readonly) CGFloat fractionCompleted;
+@property (nonatomic, assign, readonly) float fractionCompleted;
 
 + (instancetype)rootProgressWithTotalUnitCount:(NSUInteger)aTotalUnitCount;
 + (instancetype)progressWithParent:(UTProgress *)aParent totalUnitCount:(NSUInteger)aTotalUnitCount;

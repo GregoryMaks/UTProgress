@@ -27,6 +27,11 @@ copies or substantial portions of the Software.
 #import "UTProgressGroup.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Constants
+
+static void * kUTProgressKVOContext = &kUTProgressKVOContext;
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Private interface
 
 @interface UTProgress ()
@@ -41,7 +46,7 @@ copies or substantial portions of the Software.
 @property (nonatomic, assign) BOOL isCurrent;
 @property (nonatomic, strong) UTProgressGroup *currentGroup;
 
-@property (nonatomic, assign) CGFloat fractionCompleted;
+@property (nonatomic, assign) float fractionCompleted;
 
 - (void)recalculateFractionCompleted;
 
@@ -132,18 +137,24 @@ Use [parent becomeCurrentWithPendingUnitCount]."];
     {
         for (UTProgress *child in group.children)
         {
-            [child removeObserver:self forKeyPath:@"fractionCompleted"];
+            @try
+            {
+                [child removeObserver:self forKeyPath:@"fractionCompleted" context:kUTProgressKVOContext];
+                [child removeObserver:self forKeyPath:@"bubblingMessage" context:kUTProgressKVOContext];
+                [child removeObserver:self forKeyPath:@"developerBubblingMessage" context:kUTProgressKVOContext];
+            }
+            @catch (NSException *exception) {}
         }
     }
 }
 
 - (NSString *)description
 {
-    return [NSString stringWithFormat:@"Progress %p - <fractionCompleted: %.2f | completedUnits: %u | totalUnits: %u>",
+    return [NSString stringWithFormat:@"Progress %p - <fractionCompleted: %.2f | completedUnits: %lu | totalUnits: %lu>",
             self,
             self.fractionCompleted,
-            self.completedUnitCount,
-            self.totalUnitCount];
+            (unsigned long)self.completedUnitCount,
+            (unsigned long)self.totalUnitCount];
 }
 
 - (void)becomeCurrentWithPendingUnitCount:(NSUInteger)aPendingUnitCount
@@ -183,17 +194,16 @@ Use [parent becomeCurrentWithPendingUnitCount]."];
     
     [self.currentGroup.children addObject:aChildProgress];
     
-    [aChildProgress addObserver:self forKeyPath:@"fractionCompleted" options:NSKeyValueObservingOptionNew context:NULL];
-    [aChildProgress addObserver:self forKeyPath:@"bubblingMessage" options:NSKeyValueObservingOptionNew context:NULL];
-    [aChildProgress addObserver:self forKeyPath:@"developerBubblingMessage" options:NSKeyValueObservingOptionNew context:NULL];
+    [aChildProgress addObserver:self forKeyPath:@"fractionCompleted" options:NSKeyValueObservingOptionNew context:kUTProgressKVOContext];
+    [aChildProgress addObserver:self forKeyPath:@"bubblingMessage" options:NSKeyValueObservingOptionNew context:kUTProgressKVOContext];
+    [aChildProgress addObserver:self forKeyPath:@"developerBubblingMessage" options:NSKeyValueObservingOptionNew context:kUTProgressKVOContext];
 }
 
 - (void)recalculateFractionCompleted
 {
-    CGFloat fractionPerUnit = 1.0 / self.totalUnitCount;
+    float fractionPerUnit = 1.0f / self.totalUnitCount;
     
-    CGFloat groupFractionsSum = 0;  // holds summary of all fractions from all groups (will be
-    //  (group_pending_units / total_units) * valid_group_count if 100% completed)
+    float groupFractionsSum = 0;  // holds summary of all fractions from all groups (will be (group_pending_units / total_units) * valid_group_count if 100% completed)
     
     NSUInteger totalGroupUnits = 0;
     if (self.groups.count > 0)
@@ -210,14 +220,14 @@ Use [parent becomeCurrentWithPendingUnitCount]."];
         {
             if (group.children.count != 0)  // check only valid groups
             {
-                CGFloat childFractionSum = 0;   // holds summary of all children fractions (will be 1.0 * child_count if 100% completed)
+                float childFractionSum = 0;   // holds summary of all children fractions (will be 1.0 * child_count if 100% completed)
                 for (UTProgress *child in group.children)
                 {
                     childFractionSum += [child fractionCompleted];
                 }
                 
-                CGFloat fractionPerGroup = fractionPerUnit * (CGFloat)group.pendingUnitCount;
-                groupFractionsSum += fractionPerGroup * (childFractionSum / (CGFloat)group.children.count);
+                float fractionPerGroup = fractionPerUnit * (float)group.pendingUnitCount;
+                groupFractionsSum += fractionPerGroup * (childFractionSum / (float)group.children.count);
             }
         }
     }
@@ -231,17 +241,29 @@ Use [parent becomeCurrentWithPendingUnitCount]."];
 
 - (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context
 {
-    if ([keyPath isEqual:@"fractionCompleted"])
+    BOOL handled = NO;
+    if (context == kUTProgressKVOContext)
     {
-        [self recalculateFractionCompleted];
+        if ([keyPath isEqual:@"fractionCompleted"])
+        {
+            handled = YES;
+            [self recalculateFractionCompleted];
+        }
+        else if ([keyPath isEqual:@"bubblingMessage"])
+        {
+            handled = YES;
+            self.bubblingMessage = [object bubblingMessage];
+        }
+        else if ([keyPath isEqual:@"developerBubblingMessage"])
+        {
+            handled = YES;
+            self.developerBubblingMessage = [object developerBubblingMessage];
+        }
     }
-    else if ([keyPath isEqual:@"bubblingMessage"])
+    
+    if (!handled)
     {
-        self.bubblingMessage = [object bubblingMessage];
-    }
-    else if ([keyPath isEqual:@"developerBubblingMessage"])
-    {
-        self.developerBubblingMessage = [object developerBubblingMessage];
+        [super observeValueForKeyPath:keyPath ofObject:object change:change context:context];
     }
 }
 
